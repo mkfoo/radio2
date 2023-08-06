@@ -1,0 +1,5 @@
+BasedOnStyle: llvm 
+IndentCaseLabels: true
+IndentWidth: 4
+PointerAlignment: Left
+AlignAfterOpenBracket: BlockIndent

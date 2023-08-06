@@ -1,0 +1,6 @@
+[submodule "ulcd"]
+	path = ulcd
+	url = https://github.com/mkfoo/ulcd.git
+[submodule "dqtt"]
+	path = dqtt
+	url = https://github.com/mkfoo/dqtt.git

@@ -1,0 +1,15 @@
+[Unit]
+Description=switch monitor
+Requires=dqtt.service
+After=dqtt.service
+
+[Service]
+Type=simple
+Restart=always
+User=root
+Group=root
+Environment=SWM_CFG_A=13 SWM_CFG_B=19 SWM_CFG_C=26
+ExecStart=/usr/bin/switchmon
+
+[Install]
+WantedBy=multi-user.target

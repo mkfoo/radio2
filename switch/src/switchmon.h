@@ -12,7 +12,7 @@
 #include <unistd.h>
 
 #define DEFAULT_GPIO_DEV "/dev/gpiochip0"
-#define DEFAULT_SOCK_PATH "/run/radio/sock"
+#define DEFAULT_SOCK_PATH "/run/dqtt/sock"
 #define DEBOUNCE_NS 750000000
 
 static int swm_init(void);

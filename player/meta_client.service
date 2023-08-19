@@ -1,0 +1,12 @@
+[Unit]
+Description=metadata client
+
+[Service]
+Type=simple
+User=radio
+Group=radio
+Restart=always
+ExecStart=/usr/bin/meta_client
+
+[Install]
+WantedBy=multi-user.target

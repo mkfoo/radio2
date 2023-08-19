@@ -1,0 +1,12 @@
+[Unit]
+Description=HLS Client
+
+[Service]
+Type=simple
+User=radio
+Group=radio
+Restart=always
+ExecStart=/usr/bin/hls_client
+
+[Install]
+WantedBy=multi-user.target

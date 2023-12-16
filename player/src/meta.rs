@@ -23,7 +23,7 @@ pub fn run() -> Result<()> {
         meta.update();
         lcd.write_title(&meta.get_title())?;
 
-        match super::hls::expect_channel(sock.wait(300)?) {
+        match super::hls::expect_channel(sock.wait(500)?) {
             Some(0) => {
                 lcd.standby()?;
                 break;
@@ -86,7 +86,7 @@ impl LcdWriter {
             self.offset %= self.len - 15;
 
             if self.offset == 0 || self.offset == 1 {
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                std::thread::sleep(std::time::Duration::from_secs(2));
             }
         }
 

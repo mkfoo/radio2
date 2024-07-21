@@ -2,17 +2,18 @@ use super::config::Config;
 use super::error::Error;
 use super::Result;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use io::{Cursor, Read, Seek, SeekFrom};
+use io::{Read, Write};
 use m3u8_rs::Playlist;
 use std::collections::VecDeque;
+use std::process::{Command, Stdio};
 use std::{io, thread};
 use ureq::Agent;
 use url::{ParseError, Url};
 
-const DL_ESTIMATE: usize = 100 * 1000;
-const DL_LIMIT: u64 = 50 * 1000 * 1000;
+const DL_ESTIMATE: usize = 1024 * 200;
+const DL_LIMIT: u64 = 1024 * 1000 * 50;
 const TIMEOUT: u64 = 10;
-const MAX_ERRS: i32 = 2;
+const MAX_ERRS: i32 = 4;
 
 pub fn play() -> Result<()> {
     let config = Config::load_default()?;
@@ -69,18 +70,24 @@ pub fn expect_channel(s: Option<&[u8]>) -> Option<usize> {
 fn run_audio_thread(sock_path: String, receiver: Receiver<Vec<u8>>) {
     let mut sock = dqtt::Client::connect(&sock_path);
     sock.subscribe(b"playback").unwrap();
-    let (_s, handle) = rodio::OutputStream::try_default().unwrap();
-    let sink = rodio::Sink::try_new(&handle).unwrap();
 
-    loop {
-        let stream = HlsStream::new(receiver.clone());
-        sink.append(rodio::Decoder::new_aac(stream).unwrap());
-        sink.play();
+    let mut mpv = Command::new("mpv")
+        .arg("--quiet")
+        .arg("--idle=yes")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("failed to launch mpv");
 
-        match sock.wait(0).unwrap() {
+    let mut stdin = mpv.stdin.take().expect("failed to take stdin");
+
+    while let Ok(seg) = receiver.recv() {
+        stdin
+            .write_all(seg.as_slice())
+            .expect("failed to write to stdin");
+
+        match sock.wait(-1).unwrap() {
             Some(b"restart") => {
-                sink.stop();
-
                 for _ in 0..receiver.len() {
                     let _ = receiver.try_recv();
                 }
@@ -215,43 +222,5 @@ impl HlsClient {
                 true
             }
         })
-    }
-}
-
-struct HlsStream {
-    buf: Cursor<Vec<u8>>,
-    receiver: Receiver<Vec<u8>>,
-}
-
-impl HlsStream {
-    fn new(receiver: Receiver<Vec<u8>>) -> Self {
-        Self {
-            buf: Cursor::new(vec![]),
-            receiver,
-        }
-    }
-}
-
-impl Read for HlsStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let res = Read::read(&mut self.buf, buf)?;
-
-        if res == 0 {
-            return match self.receiver.recv() {
-                Ok(seg) => {
-                    self.buf = Cursor::new(seg);
-                    self.read(buf)
-                }
-                _ => Ok(0),
-            };
-        }
-
-        Ok(res)
-    }
-}
-
-impl Seek for HlsStream {
-    fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
-        Err(io::Error::from(io::ErrorKind::Unsupported))
     }
 }

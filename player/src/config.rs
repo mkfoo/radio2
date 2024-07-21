@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::hash_map::HashMap;
-
-const DEFAULT_CONFIG_PATH: &str = "/etc/radio.json";
+use std::env;
+use std::path::Path;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Channel {
@@ -40,7 +40,11 @@ impl Config {
     }
 
     pub fn load_default() -> super::Result<Self> {
-        let text = std::fs::read_to_string(DEFAULT_CONFIG_PATH)?;
+        let path = env::var("HOME")
+            .map(|s| Path::new(&s).join(".config/radio.json"))
+            .unwrap_or_else(|_| Path::new("/etc/radio.json").to_path_buf());
+
+        let text = std::fs::read_to_string(path)?;
         let c: Self = serde_json::from_str(&text)?;
         Ok(c)
     }

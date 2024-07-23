@@ -1,7 +1,7 @@
 use super::config::Config;
 use super::error::Error;
 use super::Result;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender, TryRecvError};
 use io::{Read, Write};
 use m3u8_rs::Playlist;
 use std::collections::VecDeque;
@@ -71,29 +71,45 @@ fn run_audio_thread(sock_path: String, receiver: Receiver<Vec<u8>>) {
     let mut sock = dqtt::Client::connect(&sock_path);
     sock.subscribe(b"playback").unwrap();
 
-    let mut mpv = Command::new("mpv")
-        .arg("--quiet")
-        .arg("--idle=yes")
-        .arg("-")
-        .stdin(Stdio::piped())
-        .spawn()
-        .expect("failed to launch mpv");
+    'outer: loop {
+        let mut mpv = Command::new("mpv")
+            .arg("--quiet")
+            .arg("--idle=yes")
+            .arg("-")
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("failed to launch mpv");
 
-    let mut stdin = mpv.stdin.take().expect("failed to take stdin");
+        let mut stdin = mpv.stdin.take().expect("failed to take stdin");
 
-    while let Ok(seg) = receiver.recv() {
-        stdin
-            .write_all(seg.as_slice())
-            .expect("failed to write to stdin");
-
-        match sock.wait(-1).unwrap() {
-            Some(b"restart") => {
-                for _ in 0..receiver.len() {
-                    let _ = receiver.try_recv();
+        'inner: loop {
+            match receiver.try_recv() {
+                Ok(seg) => stdin
+                    .write_all(seg.as_slice())
+                    .expect("failed to write to stdin"),
+                Err(TryRecvError::Empty) => {}
+                _ => {
+                    let _ = mpv.kill();
+                    break 'outer;
                 }
             }
-            Some(b"stop") => break,
-            _ => unreachable!(),
+
+            match sock.wait(50).unwrap() {
+                Some(b"restart") => {
+                    let _ = mpv.kill();
+
+                    for _ in 0..receiver.len() {
+                        let _ = receiver.try_recv();
+                    }
+
+                    break 'inner;
+                }
+                Some(b"stop") => {
+                    let _ = mpv.kill();
+                    break 'outer;
+                }
+                _ => {}
+            }
         }
     }
 }

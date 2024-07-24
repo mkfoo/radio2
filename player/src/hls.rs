@@ -4,8 +4,10 @@ use super::Result;
 use crossbeam_channel::{bounded, Receiver, Sender, TryRecvError};
 use io::{Read, Write};
 use m3u8_rs::Playlist;
+use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use std::collections::VecDeque;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::{io, thread};
 use ureq::Agent;
 use url::{ParseError, Url};
@@ -67,6 +69,19 @@ pub fn expect_channel(s: Option<&[u8]>) -> Option<usize> {
     }
 }
 
+fn terminate_child(mut child: Child) {
+    if let Err(e) = kill(
+        Pid::from_raw(child.id().try_into().unwrap()),
+        Signal::SIGTERM,
+    ) {
+        eprintln!("failed to send sigterm: {}", e);
+    }
+
+    if let Err(e) = child.wait() {
+        eprintln!("waiting for child failed: {}", e);
+    }
+}
+
 fn run_audio_thread(sock_path: String, receiver: Receiver<Vec<u8>>) {
     let mut sock = dqtt::Client::connect(&sock_path);
     sock.subscribe(b"playback").unwrap();
@@ -89,23 +104,23 @@ fn run_audio_thread(sock_path: String, receiver: Receiver<Vec<u8>>) {
                     .expect("failed to write to stdin"),
                 Err(TryRecvError::Empty) => {}
                 _ => {
-                    let _ = mpv.kill();
+                    eprintln!("channel disconnected");
+                    terminate_child(mpv);
                     break 'outer;
                 }
             }
 
             match sock.wait(50).unwrap() {
                 Some(b"restart") => {
-                    let _ = mpv.kill();
-
                     for _ in 0..receiver.len() {
                         let _ = receiver.try_recv();
                     }
 
+                    terminate_child(mpv);
                     break 'inner;
                 }
                 Some(b"stop") => {
-                    let _ = mpv.kill();
+                    terminate_child(mpv);
                     break 'outer;
                 }
                 _ => {}

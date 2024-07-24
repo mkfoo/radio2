@@ -66,7 +66,7 @@ impl LcdWriter {
 
     fn write_title(&mut self, title: &str) -> Result<()> {
         if self.buf != title {
-            self.buf = title.to_owned();
+            title.clone_into(&mut self.buf);
             self.len = self.buf.chars().count();
             self.offset = 0;
         }

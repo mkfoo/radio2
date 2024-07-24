@@ -40,11 +40,11 @@ impl Config {
     }
 
     pub fn load_default() -> super::Result<Self> {
-        let path = env::var("HOME")
+        let text = env::var("HOME")
             .map(|s| Path::new(&s).join(".config/radio.json"))
-            .unwrap_or_else(|_| Path::new("/etc/radio.json").to_path_buf());
+            .map(std::fs::read_to_string)
+            .unwrap_or_else(|_| std::fs::read_to_string("/etc/radio.json"))?;
 
-        let text = std::fs::read_to_string(path)?;
         let c: Self = serde_json::from_str(&text)?;
         Ok(c)
     }

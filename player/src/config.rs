@@ -10,6 +10,27 @@ pub struct Channel {
     service_id: String,
 }
 
+fn read_config(path: &Path) -> super::Result<String> {
+    let s = std::fs::read_to_string(path)?;
+    println!("read config from {}", path.display());
+    Ok(s)
+}
+
+fn read_from_cwd() -> super::Result<String> {
+    let path = env::current_dir().map(|p| p.join("radio.json"))?;
+    read_config(path.as_path())
+}
+
+fn read_from_home_dir() -> super::Result<String> {
+    let path = env::var("HOME").map(|s| Path::new(&s).join(".config/radio.json"))?;
+    read_config(path.as_path())
+}
+
+fn read_from_etc() -> super::Result<String> {
+    let path = Path::new("/etc/radio.json");
+    read_config(path)
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     channels: Vec<Channel>,
@@ -40,12 +61,10 @@ impl Config {
     }
 
     pub fn load_default() -> super::Result<Self> {
-        let text = env::var("HOME")
-            .map(|s| Path::new(&s).join(".config/radio.json"))
-            .map(std::fs::read_to_string)
-            .unwrap_or_else(|_| std::fs::read_to_string("/etc/radio.json"))?;
-
-        let c: Self = serde_json::from_str(&text)?;
-        Ok(c)
+        let text = read_from_cwd()
+            .or_else(|_| read_from_home_dir())
+            .or_else(|_| read_from_etc())?;
+        let conf: Self = serde_json::from_str(&text)?;
+        Ok(conf)
     }
 }

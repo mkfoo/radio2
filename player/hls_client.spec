@@ -1,5 +1,5 @@
 Name:           hls_client
-Version:        0.3.0
+Version:        0.3.1
 Release:        0
 Summary:        HLS client
 License:        MIT 

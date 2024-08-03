@@ -8,6 +8,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use std::collections::VecDeque;
 use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 use std::{io, thread};
 use ureq::Agent;
 use url::{ParseError, Url};
@@ -44,7 +45,7 @@ pub fn play() -> Result<()> {
                 }
             }
 
-            match expect_channel(sock.wait(-1)?) {
+            match expect_channel(sock.wait(50)?) {
                 Some(0) => break,
                 Some(new) => {
                     sock.publish(b"playback", b"restart")?;
@@ -132,10 +133,12 @@ fn run_audio_thread(sock_path: String, receiver: Receiver<Vec<u8>>) {
 struct HlsClient {
     agent: Agent,
     end_list: bool,
+    last_fetch: Instant,
     media_url: Url,
     segments: VecDeque<Url>,
     sender: Sender<Vec<u8>>,
     seq: u64,
+    target_duration: Duration,
 }
 
 impl HlsClient {
@@ -153,10 +156,12 @@ impl HlsClient {
         Ok(Self {
             agent,
             end_list: false,
+            last_fetch: Instant::now() - Duration::from_secs(3600),
             media_url: "http://localhost".parse()?,
             segments: VecDeque::new(),
             sender,
             seq: 0,
+            target_duration: Duration::from_secs(5),
         })
     }
 
@@ -178,9 +183,11 @@ impl HlsClient {
         };
 
         self.end_list = false;
+        self.last_fetch = Instant::now() - Duration::from_secs(3600);
         self.media_url = media_url;
         self.segments.clear();
         self.seq = 0;
+        self.target_duration = Duration::from_secs(5);
         Ok(())
     }
 
@@ -196,13 +203,22 @@ impl HlsClient {
     }
 
     fn fetch_playlist(&mut self) -> Result<()> {
+        if self.last_fetch.elapsed() < self.target_duration {
+            return Ok(());
+        }
+
+        self.last_fetch = Instant::now();
+
         let text = self
             .agent
             .request_url("GET", &self.media_url)
             .call()?
             .into_string()?;
+
         let (_, pl) = m3u8_rs::parse_media_playlist(text.as_bytes())
             .map_err(|_| Box::new(Error::ParseError))?;
+
+        self.target_duration = Duration::from_secs(pl.target_duration);
         let mut seq = pl.media_sequence;
 
         for s in pl.segments.iter() {

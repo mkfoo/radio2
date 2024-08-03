@@ -1,6 +1,7 @@
 use super::config::Config;
 use super::Result;
 use chrono::prelude::*;
+use chrono::TimeDelta;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
@@ -135,21 +136,23 @@ use Status::*;
 #[derive(Clone, Debug)]
 struct MetaData {
     data: JsonData,
+    delay: TimeDelta,
     last_fetch: DateTime<Utc>,
     url: Url,
 }
 
 impl MetaData {
-    fn new(url_str: &str, params: &HashMap<String, String>) -> Self {
+    fn new(url_str: &str, params: &HashMap<String, String>, delay_s: i64) -> Self {
         Self {
             data: Default::default(),
+            delay: TimeDelta::seconds(delay_s),
             last_fetch: Default::default(),
             url: Url::parse_with_params(url_str, params).unwrap(),
         }
     }
 
     fn fetch(&mut self, agent: &mut Agent) -> Result<()> {
-        if Utc::now() - self.last_fetch > chrono::Duration::seconds(COOLDOWN) {
+        if Utc::now() - self.last_fetch > TimeDelta::seconds(COOLDOWN) {
             self.last_fetch = Utc::now();
             let text = agent.request_url("GET", &self.url).call()?.into_string()?;
             let outer: OuterJson = serde_json::from_str(&text)?;
@@ -160,7 +163,7 @@ impl MetaData {
     }
 
     fn status(&self) -> Status {
-        let now = Utc::now();
+        let now = Utc::now() - self.delay;
 
         match (self.data.start_time <= now, self.data.end_time <= now) {
             (false, false) => Pending,
@@ -181,7 +184,7 @@ impl MetaData {
 impl std::fmt::Display for MetaData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(perf) = &self.data.performer {
-            write!(f, "{} -- {}", &self.data.title, &perf)
+            write!(f, "{} - {}", &self.data.title, &perf)
         } else {
             write!(f, "{}", &self.data.title)
         }
@@ -206,8 +209,8 @@ impl MetaClient {
         Self {
             agent,
             name: config.get_channel(channel).name.clone(),
-            md1: MetaData::new(&config.meta_url1, &params),
-            md2: MetaData::new(&config.meta_url2, &params),
+            md1: MetaData::new(&config.meta_url1, &params, config.meta_delay_s),
+            md2: MetaData::new(&config.meta_url2, &params, config.meta_delay_s),
         }
     }
 
@@ -223,7 +226,7 @@ impl MetaClient {
 
     fn get_title(&self) -> String {
         match (self.md1.is_current(), self.md2.is_current()) {
-            (true, true) => format!("{} {}", &self.md1, &self.md2),
+            (true, true) => format!("{} - {}", &self.md1, &self.md2),
             (true, false) => format!("{}", &self.md1),
             (false, true) => format!("{}", &self.md2),
             (false, false) => "".to_string(),

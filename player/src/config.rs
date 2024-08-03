@@ -36,6 +36,7 @@ pub struct Config {
     channels: Vec<Channel>,
     pub lcd_path: String,
     meta_params: HashMap<String, String>,
+    pub meta_delay_s: i64,
     pub meta_url1: String,
     pub meta_url2: String,
     pub queue_length: usize,
